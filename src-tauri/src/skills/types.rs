@@ -48,13 +48,22 @@ pub enum Operation {
 #[serde(rename_all = "camelCase")]
 pub struct ItemResult {
     pub id: String,
-    pub success: bool,
-    pub error: Option<String>,
+    pub outcome: Outcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Outcome {
+    Succeeded,
+    Skipped,
+    Failed,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationSummary {
     pub operation: Operation,
-    pub results: Vec<ItemResult>,
+    pub items: Vec<ItemResult>,
 }

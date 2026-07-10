@@ -15,13 +15,15 @@ export interface SkillRecord {
   reason: string | null
 }
 
+export type Outcome = 'succeeded' | 'skipped' | 'failed'
+
 export interface ItemResult {
   id: string
-  success: boolean
-  error: string | null
+  outcome: Outcome
+  code?: string
 }
 
 export interface OperationSummary {
   operation: Operation
-  results: ItemResult[]
+  items: ItemResult[]
 }
