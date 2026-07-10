@@ -1,8 +1,9 @@
 [package]
 name = "local-skills-manager-tauri"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Desktop manager for local Codex and Claude Code skills"
+authors = ["jiongzhi <ljiongzhi@gmail.com>"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "local-skills-manager-tauri",
-        "width": 800,
-        "height": 600
+        "title": "Skills Manager",
+        "width": 960,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 480
       }
     ],
     "security": {
