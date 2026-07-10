@@ -12,6 +12,13 @@ so the bundled app is tiny and runs natively on macOS, Windows and Linux.
 > The UI is currently in Chinese. English localization is welcome — see
 > [Contributing](#contributing).
 
+## Downloads
+
+Prebuilt installers for macOS (Apple Silicon & Intel), Windows and Linux are
+attached to each [GitHub Release](https://github.com/Jiongzhi/local-skills-manager/releases).
+Builds are currently unsigned, so on first launch your OS may warn you before you
+allow the app to run.
+
 ## Features
 
 - **Unified view** — lists skills from both Codex (`~/.codex/skills`) and
