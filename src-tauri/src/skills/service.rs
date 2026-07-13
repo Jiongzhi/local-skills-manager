@@ -172,21 +172,21 @@ impl<'a> SkillService<'a> {
         let mut skills = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|error| app_error(&error))?;
-            let file_type = entry.file_type().map_err(|error| app_error(&error))?;
-            if !file_type.is_dir() {
-                continue;
-            }
             let Some(directory_name) = entry.file_name().to_str().map(str::to_owned) else {
                 continue;
             };
             if directory_name.starts_with('.') {
                 continue;
             }
-            let canonical_path = match entry.path().canonicalize() {
-                Ok(path) if path.starts_with(&canonical_root) => path,
-                Ok(_) | Err(_) => continue,
-            };
-            let skill_file = canonical_path.join("SKILL.md");
+            // Resolve metadata through symlinks so that symlinked skill
+            // directories are discovered too; `entry.file_type()` would report
+            // the link itself and skip them.
+            match fs::metadata(entry.path()) {
+                Ok(metadata) if metadata.is_dir() => {}
+                _ => continue,
+            }
+            let skill_path = canonical_root.join(&directory_name);
+            let skill_file = skill_path.join("SKILL.md");
             let (name, description, reason) = match fs::read_to_string(&skill_file) {
                 Ok(content) => {
                     let (name, description) = parse_metadata(&content, &directory_name);
@@ -209,7 +209,7 @@ impl<'a> SkillService<'a> {
                     source: source.clone(),
                     state: state.clone(),
                     directory_name,
-                    path: canonical_path.to_string_lossy().into_owned(),
+                    path: skill_path.to_string_lossy().into_owned(),
                     name,
                     description,
                     reason,
@@ -259,14 +259,19 @@ impl<'a> SkillService<'a> {
         let root = self
             .managed_root(source, state, false)?
             .ok_or(AppError::IoError)?;
-        let path = root
-            .join(directory_name)
-            .canonicalize()
-            .map_err(|error| app_error(&error))?;
-        if path.starts_with(&root) && path.is_dir() {
-            Ok(path)
-        } else {
-            Err(AppError::IoError)
+        let path = root.join(directory_name);
+        // `directory_name` comes from a directory entry, but guard against any
+        // separators or `..` that could escape the managed root.
+        if path.parent() != Some(root.as_path()) {
+            return Err(AppError::IoError);
+        }
+        // Follow symlinks to confirm the target is a directory while keeping the
+        // in-root path itself, so operations act on the link rather than its
+        // target (e.g. deleting a symlinked skill trashes the link only).
+        match fs::metadata(&path) {
+            Ok(metadata) if metadata.is_dir() => Ok(path),
+            Ok(_) => Err(AppError::IoError),
+            Err(error) => Err(app_error(&error)),
         }
     }
 }

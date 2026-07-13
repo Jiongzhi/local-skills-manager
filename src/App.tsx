@@ -1,25 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import {
   AlertTriangle,
   ArchiveRestore,
   CircleOff,
   FolderOpen,
+  Languages,
   Loader2,
+  Monitor,
+  Moon,
   PackageOpen,
   RefreshCw,
   Search,
   Sparkles,
+  Sun,
   Trash2,
   X,
 } from 'lucide-react'
+import type { TFunction } from 'i18next'
 import { errorCode, listSkills, operateSkills } from './api'
+import { setLanguage } from './i18n'
+import { useTheme } from './lib/theme'
 import type { Operation, OperationSummary, SkillRecord } from './types'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
 import { Segmented } from './components/ui/segmented'
+import { Switch } from './components/ui/switch'
+import { SourceIcon } from './components/source-icon'
 import { cn } from './lib/utils'
 
 type SourceFilter = 'all' | 'codex' | 'claude'
@@ -30,40 +40,44 @@ interface Notice {
   text: string
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  permission_denied: '没有访问权限,请检查文件夹权限',
-  io_error: '文件操作失败',
-  not_found: '技能不存在或状态已变化',
-  restore_conflict: '同名技能已存在,无法恢复',
-  abnormal_skill: '异常技能(缺少 SKILL.md),已跳过',
-  unknown: '未知错误',
-}
-
 function isAbnormal(skill: SkillRecord) {
   return skill.reason === 'abnormal_skill'
 }
 
-function summarize(summary: OperationSummary): Notice {
+function errorText(t: TFunction, code: string) {
+  return t([`errors.${code}`, 'errors.unknown'])
+}
+
+function summarize(summary: OperationSummary, t: TFunction): Notice {
   const ok = summary.items.filter((item) => item.outcome === 'succeeded').length
   const skipped = summary.items.filter((item) => item.outcome === 'skipped').length
   const failed = summary.items.filter((item) => item.outcome === 'failed')
 
-  const verb =
-    summary.operation === 'disable' ? '禁用' : summary.operation === 'restore' ? '恢复' : '删除'
+  const successKey =
+    summary.operation === 'disable'
+      ? 'summary.disableSuccess'
+      : summary.operation === 'restore'
+        ? 'summary.restoreSuccess'
+        : 'summary.deleteSuccess'
+
   const parts: string[] = []
-  if (ok > 0) parts.push(`成功${verb} ${ok} 项`)
-  if (skipped > 0) parts.push(`跳过 ${skipped} 项`)
+  if (ok > 0) parts.push(t(successKey, { count: ok }))
+  if (skipped > 0) parts.push(t('summary.skipped', { count: skipped }))
   if (failed.length > 0) {
     const firstCode = failed[0].code ?? 'unknown'
-    parts.push(`失败 ${failed.length} 项(${ERROR_MESSAGES[firstCode] ?? firstCode})`)
+    parts.push(
+      t('summary.failed', { count: failed.length, reason: errorText(t, firstCode) }),
+    )
   }
   return {
     kind: failed.length > 0 ? 'error' : ok > 0 ? 'success' : 'info',
-    text: parts.join(',') || '没有可操作的技能',
+    text: parts.join(t('common.listSeparator')) || t('summary.nothing'),
   }
 }
 
 function App() {
+  const { t, i18n } = useTranslation()
+  const { theme, cycleTheme } = useTheme()
   const [skills, setSkills] = useState<SkillRecord[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -79,7 +93,9 @@ function App() {
     try {
       const records = await listSkills()
       records.sort(
-        (a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name, 'zh'),
+        (a, b) =>
+          a.source.localeCompare(b.source) ||
+          a.directoryName.localeCompare(b.directoryName, 'zh'),
       )
       setSkills(records)
       const ids = new Set(records.map((record) => record.id))
@@ -88,12 +104,12 @@ function App() {
       setSkills([])
       setNotice({
         kind: 'error',
-        text: `加载技能失败:${ERROR_MESSAGES[errorCode(error)] ?? errorCode(error)}`,
+        text: t('notice.loadFailed', { reason: errorText(t, errorCode(error)) }),
       })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -169,7 +185,7 @@ function App() {
     setBusy(true)
     try {
       const summary = await operateSkills(operation, ids)
-      setNotice(summarize(summary))
+      setNotice(summarize(summary, t))
       const succeeded = new Set(
         summary.items
           .filter((item) => item.outcome === 'succeeded')
@@ -180,7 +196,7 @@ function App() {
     } catch (error) {
       setNotice({
         kind: 'error',
-        text: `操作失败:${ERROR_MESSAGES[errorCode(error)] ?? errorCode(error)}`,
+        text: t('notice.operateFailed', { reason: errorText(t, errorCode(error)) }),
       })
     } finally {
       setBusy(false)
@@ -191,11 +207,12 @@ function App() {
     try {
       await revealItemInDir(path)
     } catch {
-      setNotice({ kind: 'error', text: '无法打开文件位置' })
+      setNotice({ kind: 'error', text: t('notice.openLocationFailed') })
     }
   }
 
   const hasAnySkill = (skills?.length ?? 0) > 0
+  const ThemeIcon = theme === 'system' ? Monitor : theme === 'light' ? Sun : Moon
 
   return (
     <div className="flex h-screen flex-col">
@@ -205,11 +222,27 @@ function App() {
           <Sparkles className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="text-base font-semibold leading-tight">Skills Manager</h1>
-          <p className="text-xs text-muted-foreground">
-            管理 Codex 与 Claude Code 的本地技能
-          </p>
+          <h1 className="text-base font-semibold leading-tight">{t('app.title')}</h1>
+          <p className="text-xs text-muted-foreground">{t('app.subtitle')}</p>
         </div>
+        <Button
+          variant="ghost"
+          size="iconSm"
+          onClick={() => setLanguage(i18n.language.startsWith('zh') ? 'en' : 'zh')}
+          title={t('language.toggle')}
+          aria-label={t('language.toggle')}
+        >
+          <Languages className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="iconSm"
+          onClick={cycleTheme}
+          title={t(`theme.${theme}`)}
+          aria-label={t('theme.toggle')}
+        >
+          <ThemeIcon className="h-4 w-4" />
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -217,7 +250,7 @@ function App() {
           disabled={loading || busy}
         >
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          刷新
+          {t('common.refresh')}
         </Button>
       </header>
 
@@ -228,7 +261,7 @@ function App() {
           <Input
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
-            placeholder="搜索技能名称或描述…"
+            placeholder={t('search.placeholder')}
             className="pl-9 pr-8"
           />
           {query && (
@@ -236,7 +269,7 @@ function App() {
               type="button"
               onClick={() => setQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground"
-              aria-label="清空搜索"
+              aria-label={t('search.clear')}
             >
               <X className="h-4 w-4" />
             </button>
@@ -246,7 +279,7 @@ function App() {
           value={sourceFilter}
           onChange={setSourceFilter}
           options={[
-            { value: 'all', label: '全部来源' },
+            { value: 'all', label: t('filter.allSource') },
             { value: 'codex', label: 'Codex' },
             { value: 'claude', label: 'Claude' },
           ]}
@@ -255,9 +288,9 @@ function App() {
           value={stateFilter}
           onChange={setStateFilter}
           options={[
-            { value: 'all', label: '全部', count: counts.all },
-            { value: 'enabled', label: '已启用', count: counts.enabled },
-            { value: 'disabled', label: '已禁用', count: counts.disabled },
+            { value: 'all', label: t('filter.all'), count: counts.all },
+            { value: 'enabled', label: t('filter.enabled'), count: counts.enabled },
+            { value: 'disabled', label: t('filter.disabled'), count: counts.disabled },
           ]}
         />
       </div>
@@ -267,15 +300,12 @@ function App() {
         {loading && skills === null ? (
           <div className="flex h-48 items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
-            正在扫描技能…
+            {t('list.scanning')}
           </div>
         ) : !hasAnySkill ? (
-          <EmptyState
-            title="未找到任何技能"
-            hint="将技能放入 ~/.codex/skills 或 ~/.claude/skills 后点击刷新"
-          />
+          <EmptyState title={t('empty.noneTitle')} hint={t('empty.noneHint')} />
         ) : filtered.length === 0 ? (
-          <EmptyState title="没有匹配的技能" hint="试试调整搜索关键词或筛选条件">
+          <EmptyState title={t('empty.noMatchTitle')} hint={t('empty.noMatchHint')}>
             <Button
               variant="outline"
               size="sm"
@@ -285,7 +315,7 @@ function App() {
                 setStateFilter('all')
               }}
             >
-              清除筛选
+              {t('empty.clearFilters')}
             </Button>
           </EmptyState>
         ) : (
@@ -297,12 +327,15 @@ function App() {
                 }
                 onCheckedChange={toggleAll}
                 disabled={selectable.length === 0}
-                aria-label="全选"
+                aria-label={t('list.selectAll')}
               />
               <span>
                 {someVisibleSelected
-                  ? `已选 ${selectable.filter((skill) => selected.has(skill.id)).length} / ${selectable.length} 项`
-                  : `共 ${filtered.length} 项`}
+                  ? t('list.selected', {
+                      count: selectable.filter((skill) => selected.has(skill.id)).length,
+                      total: selectable.length,
+                    })
+                  : t('list.total', { count: filtered.length })}
               </span>
             </div>
             <ul className="divide-y">
@@ -327,12 +360,14 @@ function App() {
       {/* 批量操作栏 */}
       {selected.size > 0 && (
         <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-xl border bg-card px-4 py-2.5 shadow-lg">
-          <span className="text-sm font-medium tabular-nums">已选 {selected.size} 项</span>
+          <span className="text-sm font-medium tabular-nums">
+            {t('bulk.selected', { count: selected.size })}
+          </span>
           <Button
             variant="ghost"
             size="iconSm"
             onClick={() => setSelected(new Set())}
-            aria-label="取消选择"
+            aria-label={t('bulk.clearSelection')}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -349,7 +384,7 @@ function App() {
             }
           >
             <CircleOff className="h-3.5 w-3.5" />
-            禁用 {selectedEnabled.length > 0 && selectedEnabled.length}
+            {t('common.disable')} {selectedEnabled.length > 0 && selectedEnabled.length}
           </Button>
           <Button
             variant="secondary"
@@ -363,7 +398,7 @@ function App() {
             }
           >
             <ArchiveRestore className="h-3.5 w-3.5" />
-            恢复 {selectedDisabled.length > 0 && selectedDisabled.length}
+            {t('common.restore')} {selectedDisabled.length > 0 && selectedDisabled.length}
           </Button>
           <Button
             variant="destructive"
@@ -372,7 +407,7 @@ function App() {
             onClick={() => setPendingDelete([...selected])}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            删除
+            {t('common.delete')}
           </Button>
           {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
@@ -394,7 +429,7 @@ function App() {
             type="button"
             onClick={() => setNotice(null)}
             className="mt-0.5 opacity-60 hover:opacity-100"
-            aria-label="关闭提示"
+            aria-label={t('bulk.clearSelection')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -407,14 +442,14 @@ function App() {
           <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-xl">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              <h2 className="text-base font-semibold">确认删除</h2>
+              <h2 className="text-base font-semibold">{t('dialog.deleteTitle')}</h2>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              将把 {pendingDelete.length} 个技能移入系统回收站,如有需要可从回收站还原。
+              {t('dialog.deleteBody', { count: pendingDelete.length })}
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setPendingDelete(null)}>
-                取消
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -427,7 +462,7 @@ function App() {
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                删除
+                {t('common.delete')}
               </Button>
             </div>
           </div>
@@ -456,6 +491,7 @@ function SkillRow({
   onDelete: () => void
   onOpen: () => void
 }) {
+  const { t } = useTranslation()
   const abnormal = isAbnormal(skill)
   return (
     <li
@@ -468,23 +504,16 @@ function SkillRow({
         checked={checked}
         onCheckedChange={onToggle}
         disabled={abnormal}
-        aria-label={`选择 ${skill.name}`}
+        aria-label={t('row.select', { name: skill.directoryName })}
       />
+      <SourceIcon source={skill.source} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{skill.name}</span>
-          <Badge variant="outline" className="capitalize">
-            {skill.source}
-          </Badge>
-          {skill.state === 'enabled' ? (
-            <Badge variant="success">已启用</Badge>
-          ) : (
-            <Badge variant="secondary">已禁用</Badge>
-          )}
+          <span className="truncate text-sm font-medium">{skill.directoryName}</span>
           {abnormal && (
             <Badge variant="warning">
               <AlertTriangle className="h-3 w-3" />
-              缺少 SKILL.md
+              {t('row.missingSkillMd')}
             </Badge>
           )}
         </div>
@@ -492,20 +521,14 @@ function SkillRow({
           {skill.description || skill.path}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        {!abnormal &&
-          (skill.state === 'enabled' ? (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={onDisable}>
-              <CircleOff className="h-3.5 w-3.5" />
-              禁用
-            </Button>
-          ) : (
-            <Button variant="ghost" size="sm" disabled={busy} onClick={onRestore}>
-              <ArchiveRestore className="h-3.5 w-3.5" />
-              恢复
-            </Button>
-          ))}
-        <Button variant="ghost" size="iconSm" onClick={onOpen} aria-label="打开文件位置">
+      <div className="flex shrink-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="iconSm"
+          onClick={onOpen}
+          aria-label={t('row.openLocation')}
+          className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+        >
           <FolderOpen className="h-4 w-4" />
         </Button>
         {!abnormal && (
@@ -514,11 +537,24 @@ function SkillRow({
             size="iconSm"
             disabled={busy}
             onClick={onDelete}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            aria-label={`删除 ${skill.name}`}
+            className="text-destructive opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+            aria-label={t('row.delete', { name: skill.directoryName })}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
+        )}
+        {!abnormal && (
+          <Switch
+            checked={skill.state === 'enabled'}
+            disabled={busy}
+            onCheckedChange={(next) => (next ? onRestore() : onDisable())}
+            aria-label={
+              skill.state === 'enabled'
+                ? t('row.disableAria', { name: skill.directoryName })
+                : t('row.enableAria', { name: skill.directoryName })
+            }
+            className="ml-1"
+          />
         )}
       </div>
     </li>

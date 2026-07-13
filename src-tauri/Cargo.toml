@@ -1,6 +1,6 @@
 [package]
 name = "local-skills-manager-tauri"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop manager for local Codex and Claude Code skills"
 authors = ["jiongzhi <ljiongzhi@gmail.com>"]
 license = "MIT"

@@ -192,3 +192,28 @@ fn linked_source_root_is_rejected_before_external_skills_are_discovered() {
     assert_eq!(summary.items[0].code.as_deref(), Some("io_error"));
     assert!(fixture.trash.paths().is_empty());
 }
+
+#[cfg(windows)]
+#[test]
+fn symlinked_skill_directories_are_listed_and_deletable() {
+    let fixture = TestService::new();
+    let target = fixture.temp.path().join("outside/browser");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("SKILL.md"), "# Browser\nDrive tabs.").unwrap();
+    let link = fixture.enabled(SkillSource::Claude).join("browser");
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+    std::os::windows::fs::symlink_dir(&target, &link).unwrap();
+
+    let skills = fixture.service().list().unwrap();
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].id, "claude:enabled:browser");
+    assert_eq!(skills[0].name, "Browser");
+
+    let summary = fixture
+        .service()
+        .operate(Operation::Delete, vec!["claude:enabled:browser".into()]);
+    assert_eq!(summary.items[0].outcome, Outcome::Succeeded);
+    // The symlink is trashed; the real skill directory it points at is left intact.
+    assert_eq!(fixture.trash.paths().len(), 1);
+    assert!(target.join("SKILL.md").exists());
+}

@@ -45,8 +45,9 @@
   --ring: oklch(0.705 0.015 286.067);
 }
 
+/* 深色变量:跟随系统(无 data-theme)或手动强制 data-theme="dark" 时生效 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --background: oklch(0.141 0.005 285.823);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.185 0.005 285.885);
@@ -65,6 +66,26 @@
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.552 0.016 285.938);
   }
+}
+
+:root[data-theme='dark'] {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.185 0.005 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.92 0.004 286.32);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.552 0.016 285.938);
 }
 
 body {
